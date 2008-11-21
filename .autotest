@@ -1,0 +1,12 @@
+Autotest.add_hook :run_command do |at|
+  puts "Re-building extensions..."
+  Dir.chdir(File.dirname(__FILE__) + "/ext") do
+    `make`
+  end
+end
+
+Autotest.add_hook :initialize do |at|
+  at.add_mapping(%r{^ext/(\w+)\.c$}) do |f, md|
+    at.files_matching(%r{test/test_#{md[1]}.rb})
+  end
+end
