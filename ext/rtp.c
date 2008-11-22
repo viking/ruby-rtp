@@ -5,8 +5,62 @@
 
 VALUE rb_mRTP;
 VALUE rb_cRSession;
-VALUE sym_mode, sym_remote, sym_local;
+VALUE sym_mode, sym_remote, sym_local, sym_block;
 VALUE ip_regexp;
+
+int scheduler_started = 0;
+
+static void
+start_scheduler()
+{
+  if (!scheduler_started) {
+    ortp_scheduler_init();
+    scheduler_started = 1;
+  }
+}
+
+static void
+parse_address(which, str, addr, port)
+  char *which;
+  VALUE str, *addr, *port;
+{
+  char *str_ptr, *idx_ptr;
+  int   str_len,  idx_len, num;
+
+  if (!NIL_P(str)) {
+    if (TYPE(str) != T_STRING) {
+      rb_raise(rb_eTypeError, "%s must be a string", which);
+    }
+    str_ptr = RSTRING_PTR(str);
+    str_len = RSTRING_LEN(str);
+    idx_ptr = index(str_ptr, ':');
+    if (idx_ptr == NULL) {
+      *port = Qnil;
+      *addr = rb_str_new(str_ptr, str_len);
+    }
+    else {
+      num = atoi(idx_ptr+1);
+      if (num == -1) {
+        *port = Qnil;
+      }
+      else if (num <= 0 || num > 65535) {
+        rb_raise(rb_eRuntimeError, "%s port is invalid", which);
+      }
+      else {
+        *port = INT2FIX(num);
+      }
+
+      idx_len = (int)(idx_ptr - str_ptr);
+      *addr = rb_str_new(str_ptr, idx_len);
+      if (!RTEST(rb_reg_match(ip_regexp, *addr))) {
+        rb_raise(rb_eRuntimeError, "%s IP is invalid", which);
+      }
+    }
+  }
+  else {
+    *addr = *port = Qnil;
+  }
+}
 
 static void
 session_free(ptr)
@@ -27,11 +81,10 @@ session_init(argc, argv, self)
   int argc;
   VALUE *argv, self;
 {
-  VALUE options, opt_mode, opt_remote, opt_local;
-  VALUE remote_addr, local_addr;
+  VALUE options, opt_mode, opt_remote, opt_local, opt_block;
+  VALUE remote_addr, remote_port, local_addr, local_port;
+  int mode;
   RtpSession *session;
-  int mode, len, len2, remote_port, local_port;
-  char *str, *sptr;
 
   rb_scan_args(argc, argv, "01", &options);
   if (NIL_P(options)) {
@@ -52,71 +105,47 @@ session_init(argc, argv, self)
 
   // remote address
   opt_remote = rb_hash_aref(options, sym_remote);
-  if (NIL_P(opt_remote)) {
-    rb_raise(rb_eRuntimeError, "remote is required");
-  }
-  if (TYPE(opt_remote) != T_STRING) {
-    rb_raise(rb_eTypeError, "remote must be a string");
-  }
-  str  = RSTRING_PTR(opt_remote);
-  len  = RSTRING_LEN(opt_remote);
-  sptr = index(str, ':');
-  if (sptr == NULL) {
-    rb_raise(rb_eRuntimeError, "remote must have a valid port");
-  }
-  len2 = (int)(sptr - str);
-  remote_addr = rb_str_new(str, len2);
-  remote_port = atoi(sptr+1);
-  if (remote_port <= 0 || remote_port > 65535) {
-    rb_raise(rb_eRuntimeError, "remote must have a valid port");
-  }
-  if (!RTEST(rb_reg_match(ip_regexp, remote_addr))) {
-    rb_raise(rb_eRuntimeError, "remote must have a valid IP");
+  parse_address("remote", opt_remote, &remote_addr, &remote_port);
+  if (mode != RTP_SESSION_RECVONLY) {
+    if (NIL_P(remote_addr))
+      rb_raise(rb_eRuntimeError, "remote address and port are required");
+    if (NIL_P(remote_port)) {
+      rb_raise(rb_eRuntimeError, "remote port is required");
+    }
   }
   rb_iv_set(self, "@remote_addr", remote_addr);
-  rb_iv_set(self, "@remote_port", INT2FIX(remote_port));
+  rb_iv_set(self, "@remote_port", remote_port);
 
-  // local address; isn't required for SENDONLY
+  // local address
   opt_local = rb_hash_aref(options, sym_local);
-  if (!NIL_P(opt_local)) {
-    if (TYPE(opt_local) != T_STRING) {
-      rb_raise(rb_eTypeError, "local must be a string");
+  parse_address("local", opt_local, &local_addr, &local_port);
+  if (mode != RTP_SESSION_SENDONLY) {
+    if (NIL_P(local_addr))
+      rb_raise(rb_eRuntimeError, "local address and port are required");
+    if (NIL_P(local_port)) {
+      rb_raise(rb_eRuntimeError, "local port is required");
     }
-    str  = RSTRING_PTR(opt_local);
-    len  = RSTRING_LEN(opt_local);
-    sptr = index(str, ':');
-    if (sptr == NULL) {
-      // port is not required for local connection
-      local_port = -1;
-      local_addr = rb_str_new(str, len);
-      rb_iv_set(self, "@local_port", Qnil);
-    }
-    else {
-      len2 = (int)(sptr - str);
-      local_addr = rb_str_new(str, len2);
-      local_port = atoi(sptr+1);
-      if (local_port <= 0 || local_port > 65535) {
-        rb_raise(rb_eRuntimeError, "local must have a valid port");
-      }
-      rb_iv_set(self, "@local_port", INT2FIX(local_port));
-    }
-    if (!RTEST(rb_reg_match(ip_regexp, local_addr))) {
-      rb_raise(rb_eRuntimeError, "local must have a valid IP");
-    }
-    rb_iv_set(self, "@local_addr", local_addr);
   }
-  else {
-    if (NIL_P(opt_local) && mode != RTP_SESSION_SENDONLY) {
-      rb_raise(rb_eRuntimeError, "local is required");
-    }
-    local_addr = Qnil;
-  }
+  rb_iv_set(self, "@local_addr", local_addr);
+  rb_iv_set(self, "@local_port", local_port);
 
+  // blocking
+  opt_block = rb_hash_aref(options, sym_block);
+
+  // session time!
   session = rtp_session_new(mode);
   if (RTEST(local_addr)) {
-    rtp_session_set_local_addr(session, RSTRING_PTR(local_addr), local_port);
+    rtp_session_set_local_addr(session, RSTRING_PTR(local_addr), FIX2INT(local_port));
   }
-  rtp_session_set_remote_addr(session, RSTRING_PTR(remote_addr), remote_port);
+  if (RTEST(remote_addr)) {
+    rtp_session_set_remote_addr(session, RSTRING_PTR(remote_addr), FIX2INT(remote_port));
+  }
+  if (RTEST(opt_block)) {
+    start_scheduler();
+    rtp_session_set_blocking_mode(session, RTEST(opt_block));
+  }
+  rtp_session_set_connected_mode(session, 1);
+  rtp_session_set_payload_type(session, 0);
   DATA_PTR(self) = session;
   return self;
 }
@@ -136,6 +165,7 @@ Init_rtp()
   sym_mode = ID2SYM(rb_intern("mode"));
   sym_remote = ID2SYM(rb_intern("remote"));
   sym_local = ID2SYM(rb_intern("local"));
+  sym_block = ID2SYM(rb_intern("block"));
 
   rb_mRTP = rb_define_module("RTP");
   rb_cRSession = rb_define_class_under(rb_mRTP, "Session", rb_cObject);
