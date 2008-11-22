@@ -1,6 +1,7 @@
 Autotest.add_hook :run_command do |at|
   puts "Re-building extensions..."
   Dir.chdir(File.dirname(__FILE__) + "/ext") do
+    `ruby1.9 extconf.rb`
     `make`
   end
 end
