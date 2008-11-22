@@ -6,19 +6,25 @@ class TestRfp < MiniTest::Unit::TestCase
       @send_options = {
         mode: RTP::Session::RTP_SESSION_SENDONLY,
         remote: "192.168.1.114:31337", local: nil, block: true,
+        connected: true
       }
       @recv_options = {
         mode: RTP::Session::RTP_SESSION_RECVONLY,
         local: "127.0.0.1:31337", remote: nil, block: true,
+        connected: true
       }
     end
 
     def create_send_session(options = {})
-      RTP::Session.new(@send_options.merge(options))
+      s = RTP::Session.new(@send_options.merge(options))
+      yield s   if block_given?
+      s.close
     end
 
     def create_recv_session(options = {})
-      RTP::Session.new(@recv_options.merge(options))
+      s = RTP::Session.new(@recv_options.merge(options))
+      yield s   if block_given?
+      s.close
     end
 
     def test_constants
@@ -70,18 +76,32 @@ class TestRfp < MiniTest::Unit::TestCase
       create_recv_session(block: "huge")
     end
 
+    def test_connected_option
+      create_send_session(connected: false)
+      create_recv_session(connected: "huge")
+    end
+
+    def test_closed
+      create_send_session do |s|
+        s.close
+        assert(s.closed?)
+      end
+    end
+
     def test_accessors_on_sendonly
-      s = create_send_session
-      assert_equal("192.168.1.114", s.remote_addr)
-      assert_equal(31337, s.remote_port)
-      assert_equal(nil, s.local_addr)
-      assert_equal(nil, s.local_port)
+      create_send_session do |s|
+        assert_equal("192.168.1.114", s.remote_addr)
+        assert_equal(31337, s.remote_port)
+        assert_equal(nil, s.local_addr)
+        assert_equal(nil, s.local_port)
+      end
     end
 
     def test_accessors_on_recvonly
-      s = create_recv_session
-      assert_equal("127.0.0.1", s.local_addr)
-      assert_equal(31337, s.local_port)
+      create_recv_session do |s|
+        assert_equal("127.0.0.1", s.local_addr)
+        assert_equal(31337, s.local_port)
+      end
     end
   end
 end

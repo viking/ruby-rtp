@@ -5,7 +5,7 @@
 
 VALUE rb_mRTP;
 VALUE rb_cRSession;
-VALUE sym_mode, sym_remote, sym_local, sym_block;
+VALUE sym_mode, sym_remote, sym_local, sym_block, sym_connected;
 VALUE ip_regexp;
 
 int scheduler_started = 0;
@@ -81,7 +81,8 @@ session_init(argc, argv, self)
   int argc;
   VALUE *argv, self;
 {
-  VALUE options, opt_mode, opt_remote, opt_local, opt_block;
+  VALUE options, opt_mode, opt_remote, opt_local, opt_block,
+        opt_connected;
   VALUE remote_addr, remote_port, local_addr, local_port;
   int mode;
   RtpSession *session;
@@ -132,6 +133,9 @@ session_init(argc, argv, self)
   // blocking
   opt_block = rb_hash_aref(options, sym_block);
 
+  // connected
+  opt_connected = rb_hash_aref(options, sym_connected);
+
   // session time!
   session = rtp_session_new(mode);
   if (RTEST(local_addr)) {
@@ -142,12 +146,40 @@ session_init(argc, argv, self)
   }
   if (RTEST(opt_block)) {
     start_scheduler();
-    rtp_session_set_blocking_mode(session, RTEST(opt_block));
+    rtp_session_set_blocking_mode(session, 1);
   }
-  rtp_session_set_connected_mode(session, 1);
+  else {
+    rtp_session_set_blocking_mode(session, 0);
+  }
+  rtp_session_set_connected_mode(session, RTEST(opt_connected));
   rtp_session_set_payload_type(session, 0);
   DATA_PTR(self) = session;
   return self;
+}
+
+static VALUE
+session_closed(self)
+  VALUE self;
+{
+  VALUE closed = rb_iv_get(self, "@closed");
+  if (RTEST(closed)) {
+    return Qtrue;
+  }
+  return Qfalse;
+}
+
+static VALUE
+session_close(self)
+  VALUE self;
+{
+  RtpSession *session;
+  if (!RTEST(session_closed(self))) {
+    Data_Get_Struct(self, RtpSession, session);
+    //rtp_session_bye(session, "Closing...");
+    rtp_session_release_sockets(session);
+    rb_iv_set(self, "@closed", Qtrue);
+  }
+  return Qnil;
 }
 
 static void
@@ -178,6 +210,8 @@ Init_rtp()
 
   rb_define_alloc_func(rb_cRSession, session_alloc);
   rb_define_method(rb_cRSession, "initialize", session_init, -1);
+  rb_define_method(rb_cRSession, "close", session_close, 0);
+  rb_define_method(rb_cRSession, "closed?", session_closed, 0);
   rb_define_attr(rb_cRSession, "remote_addr", 1, 0);
   rb_define_attr(rb_cRSession, "remote_port", 1, 0);
   rb_define_attr(rb_cRSession, "local_addr", 1, 0);
