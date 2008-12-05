@@ -5,7 +5,7 @@ class TestRfp < MiniTest::Unit::TestCase
     def setup
       @send_options = {
         mode: RTP::Session::RTP_SESSION_SENDONLY,
-        remote: "192.168.1.114:31337", local: nil, block: true,
+        remote: "127.0.0.1:31337", local: nil, block: true,
         connected: true
       }
       @recv_options = {
@@ -101,6 +101,14 @@ class TestRfp < MiniTest::Unit::TestCase
       create_recv_session do |s|
         assert_equal("127.0.0.1", s.local_addr)
         assert_equal(31337, s.local_port)
+      end
+    end
+
+    def test_sending_and_receiving
+      create_send_session do |sending|
+        create_recv_session do |receiving|
+          sending.xfer(File.dirname(__FILE__) + '/fixtures/KDE-Sys-Warning.ogg')
+        end
       end
     end
   end

@@ -182,6 +182,27 @@ session_close(self)
   return Qnil;
 }
 
+static VALUE
+session_xfer(self, filename)
+  VALUE self, filename;
+{
+  unsigned char buffer[160];
+  int num;
+  uint32_t ts = 0;
+
+  RtpSession *session;
+  Data_Get_Struct(self, RtpSession, session);
+
+  FILE *infile = fopen(RSTRING_PTR(filename), "r");
+  while ((num = fread(buffer, 1, 160, infile)) > 0) {
+    rtp_session_send_with_ts(session, buffer, num, ts);
+    ts += 160;
+  }
+
+  fclose(infile);
+  return Qnil;
+}
+
 static void
 rtp_shutdown(self)
   VALUE self;
@@ -212,6 +233,7 @@ Init_rtp()
   rb_define_method(rb_cRSession, "initialize", session_init, -1);
   rb_define_method(rb_cRSession, "close", session_close, 0);
   rb_define_method(rb_cRSession, "closed?", session_closed, 0);
+  rb_define_method(rb_cRSession, "xfer", session_xfer, 1);
   rb_define_attr(rb_cRSession, "remote_addr", 1, 0);
   rb_define_attr(rb_cRSession, "remote_port", 1, 0);
   rb_define_attr(rb_cRSession, "local_addr", 1, 0);
