@@ -5,7 +5,7 @@ class TestRfp < MiniTest::Unit::TestCase
     def setup
       @send_options = {
         mode: RTP::Session::RTP_SESSION_SENDONLY,
-        remote: "127.0.0.1:31337", local: nil, block: true,
+        remote: "127.0.0.1:31337", local: nil, block: false,
         connected: true
       }
       @recv_options = {
@@ -52,11 +52,11 @@ class TestRfp < MiniTest::Unit::TestCase
     def test_remote_addr_option
       assert_raises(RuntimeError, "remote address and port are required") { create_send_session(remote: nil) }
       assert_raises(TypeError, "remote must be a string") { create_send_session(remote: 123.456) }
-      assert_raises(RuntimeError, "remote port is required") { create_send_session(remote: "192.168.1.114") }
-      assert_raises(RuntimeError, "remote port is invalid") { create_send_session(remote: "192.168.1.114:") }
-      assert_raises(RuntimeError, "remote port is invalid") { create_send_session(remote: "192.168.1.114:-123") }
-      assert_raises(RuntimeError, "remote port is invalid") { create_send_session(remote: "192.168.1.114:65536") }
-      assert_raises(RuntimeError, "remote must have a valid IP") { create_send_session(remote: "192.168.1:31337") }
+      assert_raises(RuntimeError, "remote port is required") { create_send_session(remote: "127.0.0.1") }
+      assert_raises(RuntimeError, "remote port is invalid") { create_send_session(remote: "127.0.0.1:") }
+      assert_raises(RuntimeError, "remote port is invalid") { create_send_session(remote: "127.0.0.1:-123") }
+      assert_raises(RuntimeError, "remote port is invalid") { create_send_session(remote: "127.0.0.1:65536") }
+      assert_raises(RuntimeError, "remote must have a valid IP") { create_send_session(remote: "127.0.0.137") }
       assert_raises(RuntimeError, "remote address and port are required") { create_send_session(remote: ":31337") }
     end
 
@@ -90,7 +90,7 @@ class TestRfp < MiniTest::Unit::TestCase
 
     def test_accessors_on_sendonly
       create_send_session do |s|
-        assert_equal("192.168.1.114", s.remote_addr)
+        assert_equal("127.0.0.1", s.remote_addr)
         assert_equal(31337, s.remote_port)
         assert_equal(nil, s.local_addr)
         assert_equal(nil, s.local_port)
@@ -106,9 +106,7 @@ class TestRfp < MiniTest::Unit::TestCase
 
     def test_sending_and_receiving
       create_send_session do |sending|
-        create_recv_session do |receiving|
-          sending.xfer(File.dirname(__FILE__) + '/fixtures/KDE-Sys-Warning.ogg')
-        end
+        sending.send_file(File.dirname(__FILE__) + '/fixtures/KDE-Sys-Warning.ogg')
       end
     end
   end

@@ -1,3 +1,4 @@
-ruby-rtp is a wrapper around the oRTP library.
+ruby-rtp is a wrapper around the oRTP library.  It's currently only
+compatible with Ruby 1.9.
 
 oRTP homepage: http://www.linphone.org/index.php/eng/code_review/ortp

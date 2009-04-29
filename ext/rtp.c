@@ -183,7 +183,7 @@ session_close(self)
 }
 
 static VALUE
-session_xfer(self, filename)
+session_send_file(self, filename)
   VALUE self, filename;
 {
   unsigned char buffer[160];
@@ -233,7 +233,7 @@ Init_rtp()
   rb_define_method(rb_cRSession, "initialize", session_init, -1);
   rb_define_method(rb_cRSession, "close", session_close, 0);
   rb_define_method(rb_cRSession, "closed?", session_closed, 0);
-  rb_define_method(rb_cRSession, "xfer", session_xfer, 1);
+  rb_define_method(rb_cRSession, "send_file", session_send_file, 1);
   rb_define_attr(rb_cRSession, "remote_addr", 1, 0);
   rb_define_attr(rb_cRSession, "remote_port", 1, 0);
   rb_define_attr(rb_cRSession, "local_addr", 1, 0);
